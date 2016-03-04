@@ -10,8 +10,8 @@
  *   Eurotech
  */
 /*
-* Copyright (c) 2011 Eurotech Inc. All rights reserved.
-*/
+ * Copyright (c) 2011 Eurotech Inc. All rights reserved.
+ */
 
 package org.eclipse.kura.core.cloud;
 
@@ -34,16 +34,18 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 {
 	@SuppressWarnings("unused")
 	private static final Logger s_logger = LoggerFactory.getLogger(CloudClientImpl.class);
-	
+
 	private String 			           m_applicationId;
 	private DataService                m_dataService;
 	private CloudServiceImpl           m_cloudServiceImpl;
 
 	private List<CloudClientListenerAdapter> m_listeners;
-	
+
+	private boolean m_encode = true;
+
 	protected CloudClientImpl(String applicationId,
-						      DataService dataService,
-						      CloudServiceImpl cloudServiceImpl)
+			DataService dataService,
+			CloudServiceImpl cloudServiceImpl)
 	{
 		m_applicationId    = applicationId;
 		m_dataService      = dataService;
@@ -59,8 +61,8 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 	public String getApplicationId() {
 		return m_applicationId;
 	}
-	
-	
+
+
 	/**
 	 * Releases this CloudClient handle.  This instance should no longer be used.
 	 * Note: CloudClient does not unsubscribes all subscriptions incurred by this client,
@@ -72,7 +74,7 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 		m_cloudServiceImpl.removeCloudClient(this);
 	}
 
-	
+
 	// --------------------------------------------------------------------
 	//
 	//  CloudCallbackHandler API
@@ -84,7 +86,7 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 		m_listeners.add( new CloudClientListenerAdapter(cloudClientListener));
 	}
 
-	
+
 	public void removeCloudClientListener(CloudClientListener cloudClientListener) 
 	{
 		// create a copy to avoid concurrent modification exceptions
@@ -97,7 +99,7 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 		}
 	}
 
-	
+
 	// --------------------------------------------------------------------
 	//
 	//  CloudClient API
@@ -107,10 +109,13 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 	public boolean isConnected() {
 		return m_dataService.isConnected();
 	}	
-	
-	
+
+	public void reEncodeTopic(boolean encode){
+		m_encode  = encode;
+	}
+
 	public int publish(String topic, KuraPayload payload, int qos, boolean retain) 
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = false;
 		String   appTopic = encodeTopic(topic, isControl);
@@ -122,9 +127,9 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 								     5);
 	}
 
-	
+
 	public int publish(String topic, KuraPayload payload, int qos, boolean retain, int priority) 
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = false;
 		String   appTopic = encodeTopic(topic, isControl);
@@ -136,9 +141,9 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 								     priority);
 	}
 
-	
+
 	public int publish(String topic, byte[] payload, int qos, boolean retain, int priority) 
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = false;
 		String   appTopic = encodeTopic(topic, isControl);
@@ -149,9 +154,9 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 								     priority);
 	}
 
-	
+
 	public int controlPublish(String topic, KuraPayload payload, int qos, boolean retain, int priority) 
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = true;
 		String   appTopic = encodeTopic(topic, isControl);
@@ -162,10 +167,10 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 									 retain,
 									 priority);
 	}
-	
-	
+
+
 	public int controlPublish(String deviceId, String topic, KuraPayload payload, int qos, boolean retain, int priority)
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = true;
 		String   appTopic = encodeTopic(deviceId, topic, isControl);
@@ -179,7 +184,7 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 
 
 	public int controlPublish(String deviceId, String topic, byte[] payload, int qos, boolean retain, int priority) 
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = true;
 		String   appTopic = encodeTopic(deviceId, topic, isControl);
@@ -189,28 +194,28 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 								     retain,
 								     priority);
 	}
-	
+
 
 	public void subscribe(String topic, int qos) 
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = false;
 		String   appTopic = encodeTopic(topic, isControl);
 		m_dataService.subscribe(appTopic, qos);
 	}
 
-	
+
 	public void controlSubscribe(String topic, int qos) 
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = true;
 		String   appTopic = encodeTopic(topic, isControl);
 		m_dataService.subscribe(appTopic, qos);
 	}
 
-	
+
 	public void unsubscribe(String topic) 
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = false;
 		String   appTopic = encodeTopic(topic, isControl);
@@ -219,25 +224,25 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 
 
 	public void controlUnsubscribe(String topic) 
-		throws KuraException 
+			throws KuraException 
 	{
 		boolean isControl = true;
 		String   appTopic = encodeTopic(topic, isControl);
 		m_dataService.unsubscribe(appTopic);
 	}
-		
+
 	@Override
 	public List<Integer> getUnpublishedMessageIds() throws KuraException {
 		String topicRegex = getAppTopicRegex();
 		return m_dataService.getUnpublishedMessageIds(topicRegex);
 	}
-	
+
 	@Override
 	public List<Integer> getInFlightMessageIds() throws KuraException {
 		String topicRegex = getAppTopicRegex();
 		return m_dataService.getInFlightMessageIds(topicRegex);
 	}
-	
+
 	@Override
 	public List<Integer> getDroppedInFlightMessageIds() throws KuraException {
 		String topicRegex = getAppTopicRegex();
@@ -257,7 +262,7 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 		}
 	}
 
-	
+
 	public void onControlMessageArrived(String deviceId, String appTopic, KuraPayload payload, int qos, boolean retain) 
 	{
 		for (CloudClientListener listener : m_listeners) {
@@ -291,7 +296,7 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 		}
 	}
 
-	
+
 	// ----------------------------------------------------------------
 	//
 	//   Private methods
@@ -300,11 +305,15 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 
 	private String encodeTopic(String topic, boolean isControl)
 	{
-		CloudServiceOptions options = m_cloudServiceImpl.getCloudServiceOptions();
-		return encodeTopic(options.getTopicClientIdToken(), topic, isControl);
+		String encodedTopic = topic;
+		if(m_encode){
+			CloudServiceOptions options = m_cloudServiceImpl.getCloudServiceOptions();
+			encodedTopic = encodeTopic(options.getTopicClientIdToken(), topic, isControl);
+		} 
+		return encodedTopic;
 	}
-	
-	
+
+
 	private String encodeTopic(String deviceId, String topic, boolean isControl)
 	{
 		CloudServiceOptions options = m_cloudServiceImpl.getCloudServiceOptions();
@@ -327,13 +336,13 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 		
 		return sb.toString();
 	}
-	
+
 	private String getAppTopicRegex() {
 		CloudServiceOptions options = m_cloudServiceImpl.getCloudServiceOptions();
 		StringBuilder sb = new StringBuilder();
 
 		//String regexExample = "^(\\$EDC/)?eurotech/.+/conf-v1(/.+)?";
-		
+
 		// Optional control prefix
 		sb.append("^(")
 		//.append(options.getTopicControlPrefix())
@@ -347,7 +356,7 @@ public class CloudClientImpl implements CloudClient, CloudClientListener
 		.append(options.getTopicSeparator())
 		.append(m_applicationId)
 		.append("(/.+)?");
-		
+
 		return sb.toString();
 	}
 }

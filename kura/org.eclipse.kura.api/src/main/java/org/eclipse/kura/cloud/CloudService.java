@@ -69,6 +69,8 @@ public interface CloudService
      * @return
      */
 	public boolean isConnected();
+	
+	public void publishCertificates(boolean publish);
 }
 
 

@@ -82,11 +82,13 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 	String                  		m_iccid;
 	String                  		m_imsi;
 	String 							m_rssi;
-	
+
 	private boolean                 m_subscribed;
 	private boolean                 m_birthPublished;
 
 	private AtomicInteger           m_messageId;
+
+	private boolean m_publish = false;
 
 	public CloudServiceImpl() {
 		m_cloudClients = new CopyOnWriteArrayList<CloudClientImpl>();
@@ -189,7 +191,7 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 		String[] eventTopics = {PositionLockedEvent.POSITION_LOCKED_EVENT_TOPIC, ModemReadyEvent.MODEM_EVENT_READY_TOPIC};
 		props.put(EventConstants.EVENT_TOPIC, eventTopics);
 		m_ctx.getBundleContext().registerService(EventHandler.class.getName(), this, props);
-		
+
 		//
 		// Usually the cloud connection is setup in the
 		// onConnectionEstablished callback.
@@ -272,7 +274,7 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 			s_logger.trace("handleEvent() :: IMSI={}", m_imsi);
 			s_logger.trace("handleEvent() :: ICCID={}", m_iccid);
 			s_logger.trace("handleEvent() :: RSSI={}", m_rssi);
-			
+
 			if (m_dataService.isConnected() && m_options.getRepubBirthCertOnModemDetection()) {
 				if (!(((m_imei == null) || (m_imei.length() == 0) || m_imei.equals("ERROR"))
 						&& ((m_imsi == null) || (m_imsi.length() == 0) || m_imsi.equals("ERROR"))
@@ -330,6 +332,11 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 	public boolean isConnected() 
 	{
 		return (m_dataService != null && m_dataService.isConnected());
+	}
+
+	@Override
+	public void publishCertificates(boolean publish){
+		m_publish  = publish;
 	}
 
 
@@ -398,7 +405,7 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 		} catch (KuraException e) {
 			s_logger.warn("Cannot setup cloud service connection");
 		}
-		
+
 		// raise event
 		m_eventAdmin.postEvent( new CloudConnectionEstablishedEvent( new HashMap<String,Object>()));		
 
@@ -484,7 +491,8 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 
 
 			for (CloudClientImpl cloudClient : m_cloudClients) {
-				if (cloudClient.getApplicationId().equals(kuraTopic.getApplicationId())) {
+				if (cloudClient.getApplicationId().equals(kuraTopic.getApplicationId()) || 
+						cloudClient.getApplicationId().equals(kuraTopic.getDeviceId())) {
 					try {
 						if (m_options.getTopicControlPrefix().equals(kuraTopic.getPrefix())) {
 							if(m_certificatesService == null){
@@ -538,7 +546,7 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 				return;
 			}
 		}
-		
+
 		// notify listeners
 		KuraTopic kuraTopic = new KuraTopic(topic);
 		for (CloudClientImpl cloudClient : m_cloudClients) {
@@ -557,7 +565,7 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 				return;
 			}
 		}
-		
+
 		// notify listeners			
 		KuraTopic kuraTopic = new KuraTopic(topic);
 		for (CloudClientImpl cloudClient : m_cloudClients) {
@@ -623,7 +631,7 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 		if (onConnect) {
 			m_subscribed = false;
 		}
-		
+
 		// publish birth certificate unless it has already been published
 		// and republish is disabled 
 		boolean publishBirth = true;
@@ -631,13 +639,13 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 			publishBirth = false;
 			s_logger.info("Birth certificate republish is disabled in configuration");
 		}
-		
+
 		// publish birth certificate
 		if (publishBirth) {
 			publishBirthCertificate();
 			m_birthPublished = true;
 		}
-		
+
 		// restore or remove default subscriptions
 		if (m_options.getDisableDefaultSubscriptions()) {
 			s_logger.info("Default subscriptions are disabled in configuration");
@@ -647,7 +655,7 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 			}
 		} else {
 			if (!m_subscribed) {
-			    setupDeviceSubscriptions(true);
+				setupDeviceSubscriptions(true);
 				m_subscribed = true;
 			}
 		}
@@ -655,52 +663,58 @@ public class CloudServiceImpl implements CloudService, DataServiceListener, Conf
 
 	private void publishBirthCertificate() throws KuraException 
 	{
-		StringBuilder sbTopic = new StringBuilder();
-		sbTopic.append(m_options.getTopicControlPrefix())
-		.append(m_options.getTopicSeparator())
-		.append(m_options.getTopicAccountToken())
-		.append(m_options.getTopicSeparator())
-		.append(m_options.getTopicClientIdToken())
-		.append(m_options.getTopicSeparator())
-		.append(m_options.getTopicBirthSuffix());
+		if(m_publish){
+			StringBuilder sbTopic = new StringBuilder();
+			sbTopic.append(m_options.getTopicControlPrefix())
+			.append(m_options.getTopicSeparator())
+			.append(m_options.getTopicAccountToken())
+			.append(m_options.getTopicSeparator())
+			.append(m_options.getTopicClientIdToken())
+			.append(m_options.getTopicSeparator())
+			.append(m_options.getTopicBirthSuffix());
 
-		String topic = sbTopic.toString();
-		KuraPayload payload = createBirthPayload();
-		publishLifeCycleMessage(topic, payload);
+			String topic = sbTopic.toString();
+			KuraPayload payload = createBirthPayload();
+			publishLifeCycleMessage(topic, payload);
+		}
 	}
 
 
 	private void publishDisconnectCertificate() throws KuraException 
 	{
-		StringBuilder sbTopic = new StringBuilder();
-		sbTopic.append(m_options.getTopicControlPrefix())
-		.append(m_options.getTopicSeparator())
-		.append(m_options.getTopicAccountToken())
-		.append(m_options.getTopicSeparator())
-		.append(m_options.getTopicClientIdToken())
-		.append(m_options.getTopicSeparator())
-		.append(m_options.getTopicDisconnectSuffix());
+		if(m_publish){
+			StringBuilder sbTopic = new StringBuilder();
+			sbTopic.append(m_options.getTopicControlPrefix())
+			.append(m_options.getTopicSeparator())
+			.append(m_options.getTopicAccountToken())
+			.append(m_options.getTopicSeparator())
+			.append(m_options.getTopicClientIdToken())
+			.append(m_options.getTopicSeparator())
+			.append(m_options.getTopicDisconnectSuffix());
 
-		String topic = sbTopic.toString();
-		KuraPayload payload = createDisconnectPayload();
-		publishLifeCycleMessage(topic, payload);
+			String topic = sbTopic.toString();
+			KuraPayload payload = createDisconnectPayload();
+			publishLifeCycleMessage(topic, payload);
+		}
 	}
 
 
 	private void publishAppCertificate() throws KuraException 
 	{
-		StringBuilder sbTopic = new StringBuilder();
-		sbTopic.append(m_options.getTopicControlPrefix())
-		.append(m_options.getTopicSeparator())
-		.append(m_options.getTopicAccountToken())
-		.append(m_options.getTopicSeparator())
-		.append(m_options.getTopicClientIdToken())
-		.append(m_options.getTopicSeparator())
-		.append(m_options.getTopicAppsSuffix());
+		if(m_publish){
+			StringBuilder sbTopic = new StringBuilder();
+			sbTopic.append(m_options.getTopicControlPrefix())
+			.append(m_options.getTopicSeparator())
+			.append(m_options.getTopicAccountToken())
+			.append(m_options.getTopicSeparator())
+			.append(m_options.getTopicClientIdToken())
+			.append(m_options.getTopicSeparator())
+			.append(m_options.getTopicAppsSuffix());
 
-		String topic = sbTopic.toString();
-		KuraPayload payload = createBirthPayload();
-		publishLifeCycleMessage(topic, payload);
+			String topic = sbTopic.toString();
+			KuraPayload payload = createBirthPayload();
+			publishLifeCycleMessage(topic, payload);
+		}
 	}
 
 

@@ -101,6 +101,16 @@ public interface CloudClient
 	public boolean isConnected();
 	
 	/**
+	 * Tells this cloud client if topic should be re-encoded and prefixed with topic control prefix,
+	 * account name, and app id. If control prefix and account name is not needed, set this to false.
+	 * 
+	 * If the broker supports only specific topics that you will set, set this to false.
+	 * 
+	 * @param encode
+	 */
+	public void reEncodeTopic(boolean encode);
+	
+	/**
 	 * Publishes a message to the remote server using the default priority 5.
 	 * Before passing the message the to {@link org.eclipse.kura.data.DataService}, 
 	 * the CloudClient will manipulate the provided topic by appending the necessary parts
