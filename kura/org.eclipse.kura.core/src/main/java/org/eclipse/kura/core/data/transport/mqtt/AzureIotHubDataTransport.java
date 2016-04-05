@@ -41,9 +41,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.microsoft.azure.iothub.auth.IotHubSasToken;
+import com.microsoft.azure.iothub.net.IotHubUri;
 
 public class AzureIotHubDataTransport implements DataTransportService, MqttCallback, ConfigurableComponent, SslServiceListener, CloudConnectionStatusComponent{
 
+	private static final String PUBLISH_TOPIC_FORMAT = "devices/%s/messages/events";
+	private static final String SUBSCRIBE_TOPIC_FORMAT = "devices/%s/messages/devicebound/#";
+	
 	private static final Logger s_logger = LoggerFactory.getLogger(AzureIotHubDataTransport.class);
 	private static final Object IOTHUB_DEVICE_CONNECTION_STRING_PROP_NAME = "connection.string";
 	private static final String MQTT_KEEP_ALIVE_PROP_NAME = "keep.alive";
@@ -59,6 +63,9 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 	private static final String MQTT_CLIENT_ID_PROP_NAME = "client-id";
 	private static final String SSL_SCHEME = "ssl://";
 
+	private String subscribeTopic;
+	private String publishTopic;
+	
 	private Map<String, Object> m_properties = new HashMap<String, Object>();
 
 	private SslManagerService m_sslManagerService;
@@ -74,6 +81,8 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 	private String m_connectionString = "";
 	private String m_sessionId;
 	private boolean m_newSession;
+	
+	private boolean subscribed;
 
 	public void setSslManagerService(SslManagerService sslManagerService) {
 		this.m_sslManagerService = sslManagerService;
@@ -105,6 +114,10 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 	protected void activate(ComponentContext componentContext, Map<String, Object> properties) {
 		s_logger.info("Activating...");
 
+		subscribed = false;
+		this.subscribeTopic = null;
+		this.publishTopic = null;
+		
 		//Set up properties
 		for(Map.Entry<String, Object> entry : properties.entrySet()) {
 			String key = entry.getKey();
@@ -122,7 +135,7 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 				m_properties .put(key, value);
 			}
 		}
-
+		
 		ServiceTracker<DataTransportListener, DataTransportListener> listenersTracker = new ServiceTracker<DataTransportListener, DataTransportListener>(
 				componentContext.getBundleContext(), DataTransportListener.class, null);
 
@@ -137,7 +150,7 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 		} catch (RuntimeException e){
 			s_logger.error("Invalid client configuration. Service will not be able to connect until the configuration is updated", e);
 		}
-
+		
 		s_logger.info("Done.");
 	}
 
@@ -245,7 +258,7 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 		s_logger.info("#  broker          = " + m_clientConf.getBrokerUrl());
 		s_logger.info("#  clientId        = " + m_clientConf.getClientId());
 		s_logger.info("#  username        = " + m_clientConf.getConnectOptions().getUserName());
-		s_logger.info("#  password        = XXXXXXXXXXXXXX");
+		s_logger.info("#  password        = " + new String(m_clientConf.getConnectOptions().getPassword()));
 		s_logger.info("#  keepAlive       = " + m_clientConf.getConnectOptions().getKeepAliveInterval());
 		s_logger.info("#  timeout         = " + m_clientConf.getConnectOptions().getConnectionTimeout());
 		s_logger.info("#  cleanSession    = " + m_clientConf.getConnectOptions().isCleanSession());
@@ -263,7 +276,8 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 		//Connect
 		try {
 			IMqttToken connectToken = m_mqttClient.connect(m_clientConf.getConnectOptions());
-			connectToken.waitForCompletion(10000);
+			connectToken.waitForCompletion(120000);
+			this.subscribe("devices/"+m_properties.get(MQTT_CLIENT_ID_PROP_NAME)+"/messages/devicebound/#", 0);
 			s_logger.info("#  Connected!");
 			s_logger.info("# ------------------------------------------------------------");
 
@@ -284,6 +298,15 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 			m_cloudConnectionStatusService.updateStatus(this, CloudConnectionStatusEnum.OFF);
 
 			throw new KuraConnectException(e1, "Cannot connect");
+		} catch (KuraTimeoutException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (KuraNotConnectedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (KuraException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		} finally {
 			m_cloudConnectionStatusService.unregister(this);
 		}
@@ -352,23 +375,32 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 	}
 
 	@Override
-	public void subscribe(String topic, int qos) throws KuraTimeoutException, KuraException, KuraNotConnectedException {
+	public synchronized void subscribe(String topic, int qos) throws KuraTimeoutException, KuraException, KuraNotConnectedException {
 		if (m_mqttClient == null || !m_mqttClient.isConnected()) {
 			throw new KuraNotConnectedException("Not connected");
 		}
 
-		s_logger.info("Subscribing to topic: {} with QoS: {}", topic, qos);
-
-		try {
-			IMqttToken token = m_mqttClient.subscribe(topic, qos);
-			token.waitForCompletion(10000);
-		} catch (MqttException e) {
-			if (e.getReasonCode() == MqttException.REASON_CODE_CLIENT_TIMEOUT) {
-				s_logger.warn("Timeout subscribing to topic: {}", topic);
-				throw new KuraTimeoutException("Timeout subscribing to topic: " + topic, e);
-			} else {
-				s_logger.error("Cannot subscribe to topic: " + topic, e);
-				throw KuraException.internalError(e, "Cannot subscribe to topic: " + topic);
+		qos = 1;
+		if(!topic.equals(this.subscribeTopic)){
+			s_logger.info("Overriding unsupported topic {} to {}", topic, this.subscribeTopic);
+			topic = this.subscribeTopic;
+		}
+		
+		if(!subscribed){
+			s_logger.info("Subscribing to topic: {} with QoS: {}", topic, qos);
+	
+			try {
+				IMqttToken token = m_mqttClient.subscribe(topic, qos);
+				token.waitForCompletion(10000);
+				subscribed = true;
+			} catch (MqttException e) {
+				if (e.getReasonCode() == MqttException.REASON_CODE_CLIENT_TIMEOUT) {
+					s_logger.warn("Timeout subscribing to topic: {}", topic);
+					throw new KuraTimeoutException("Timeout subscribing to topic: " + topic, e);
+				} else {
+					s_logger.error("Cannot subscribe to topic: " + topic, e);
+					throw KuraException.internalError(e, "Cannot subscribe to topic: " + topic);
+				}
 			}
 		}
 	}
@@ -379,6 +411,11 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 			throw new KuraNotConnectedException("Not connected");
 		}
 
+		if(!topic.equals(this.subscribeTopic)){
+			s_logger.info("Overriding unsupported topic {} to {}", topic, this.subscribeTopic);
+			topic = this.subscribeTopic;
+		}
+		
 		s_logger.info("Unsubscribing to topic: {}", topic);
 
 		try {
@@ -402,6 +439,12 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 			throw new KuraNotConnectedException("Not connected");
 		}
 
+		qos = 1;
+		if(!topic.equals(this.publishTopic)){
+			s_logger.info("Overriding unsupported topic {} to {}", topic, this.publishTopic);
+			topic = this.publishTopic;
+		}
+		
 		s_logger.info("Publishing message on topic: {} with QoS: {}", topic, qos);
 
 		MqttMessage message = new MqttMessage();
@@ -533,7 +576,8 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 
 			MqttAsyncClient client = null;
 			try {
-				client = new MqttAsyncClient(m_clientConf.getBrokerUrl(), m_clientConf.getClientId(), new MemoryPersistence());
+				client = new MqttAsyncClient(m_clientConf.getBrokerUrl(), 
+						m_clientConf.getClientId(), new MemoryPersistence());
 			} catch (MqttException e) {
 				s_logger.error("Client instantiation failed", e);
 				throw new IllegalStateException("Client instantiation failed", e);
@@ -595,7 +639,7 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 
 		try {
 			SSLSocketFactory ssf = m_sslManagerService.getSSLSocketFactory(null);
-			conOpt.setSocketFactory(ssf);
+			//conOpt.setSocketFactory(ssf);
 		} catch (Exception e) {
 			s_logger.error("SSL setup failed", e);
 			throw new IllegalStateException("SSL setup failed", e);
@@ -648,10 +692,11 @@ public class AzureIotHubDataTransport implements DataTransportService, MqttCallb
 				//TODO: Modify to get project name and version from configuration
 				clientIdentifier = "DeviceClientType=" + URLEncoder.encode("org.eclipse.kura.core.data.transport.mqtt.AzureIotHubDataTransport" + "1.0.0", "UTF-8");
 				String username = hostname + "/" + deviceId + "/" + clientIdentifier;
-				String password = new IotHubSasToken(hostname + "/devices/" + deviceId, 
-						deviceId, 
+				String password = new IotHubSasToken(IotHubUri.getResourceUri(hostname, deviceId), 
 						sharedAccessKey, 
-						System.currentTimeMillis() / 1000l + 60 + 1l).toString();
+						System.currentTimeMillis() / 1000l + 600l + 1l).toString();
+				this.subscribeTopic = String.format(SUBSCRIBE_TOPIC_FORMAT, deviceId);
+				this.publishTopic = String.format(PUBLISH_TOPIC_FORMAT, deviceId);
 				this.m_properties.put(MQTT_BROKER_URL_PROP_NAME, SSL_SCHEME + hostname + ":" + PORT);
 				this.m_properties.put(MQTT_USERNAME_PROP_NAME, username);
 				this.m_properties.put(MQTT_PASSWORD_PROP_NAME, password.toCharArray());

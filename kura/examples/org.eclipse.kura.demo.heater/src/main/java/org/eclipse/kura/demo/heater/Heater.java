@@ -106,6 +106,7 @@ public class Heater implements ConfigurableComponent, CloudClientListener
 			// Acquire a Cloud Application Client for this Application 
 			s_logger.info("Getting CloudClient for {}...", APP_ID);
 			m_cloudClient = m_cloudService.newCloudClient(APP_ID);
+			m_cloudClient.reEncodeTopic(false);
 			m_cloudClient.addCloudClientListener(this);
 			
 			// Don't subscribe because these are handled by the default 

@@ -9,10 +9,10 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-import java.util.Base64;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import javax.xml.bind.DatatypeConverter;
 
 /** Builds the authorization signature as a composition of functions. */
 public final class SignatureHelper
@@ -36,7 +36,7 @@ public final class SignatureHelper
      */
     public static byte[] buildRawSignature(String resourceUri, long expiryTime)
     {
-        // Codes_SRS_SIGNATUREHELPER_11_001: [The function shall initialize the message being encoded as "<resourceUri>\n<expiryTime>".]
+        // Codes_SRS_SIGNATUREHELPER_11_001: [The function shall initialize the message being encoded as "<scope>\n<expiryTime>".]
         // Codes_SRS_SIGNATUREHELPER_11_002: [The function shall decode the message using the charset UTF-8.]
         return String.format(RAW_SIGNATURE_FORMAT, resourceUri, expiryTime)
                 .getBytes(SIGNATURE_CHARSET);
@@ -52,7 +52,7 @@ public final class SignatureHelper
     public static byte[] decodeDeviceKeyBase64(String deviceKey)
     {
         // Codes_SRS_SIGNATUREHELPER_11_003: [The function shall decode the device key using Base64.]
-        return Base64.getDecoder().decode(deviceKey.getBytes());
+        return DatatypeConverter.parseBase64Binary(deviceKey);
     }
 
     /**
@@ -102,7 +102,8 @@ public final class SignatureHelper
     public static byte[] encodeSignatureBase64(byte[] sig)
     {
         // Codes_SRS_SIGNATUREHELPER_11_006: [The function shall encode the signature using Base64.]
-    	return Base64.getEncoder().encode(sig);
+        return DatatypeConverter.printBase64Binary(sig)
+                .getBytes(SIGNATURE_CHARSET);
     }
 
     /**
